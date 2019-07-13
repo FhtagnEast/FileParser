@@ -49,5 +49,11 @@ public class TextMatchWithCachedSurround implements Serializable {
     public void setNumberOfStringWithMatch(int numberOfStringWithMatch) {
         this.numberOfStringWithMatch = numberOfStringWithMatch;
     }
+
+    @Override
+    public String toString(){
+        String output = Long.toString(this.matchPositionInWholeText) + " " + cachedSurroundOfMatch;
+        return output;
+    }
 }
 

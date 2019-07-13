@@ -1,53 +1,35 @@
 package com.gmail.fhtagneast;
 
 import java.io.*;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.Path;
+import java.util.AbstractQueue;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 
 public class MatchFinder {
 
-    private int cachingBufferOffset;
+    final private int cachingBufferOffset;
+    final private AbstractQueue<Path> pathQueue;
+    final private char[] patternForSearch;
+    final private int bufferLength;
+
+    private boolean isBusy = false;
+    private long currentPositionInText;
     private int initialPositionInMatchPatternForSearch;
 
-    public MatchFinder(int bufferSize) {
-        this.cachingBufferOffset = bufferSize;
+    public MatchFinder(
+            int bufferLength,
+            int cachingBufferOffset,
+            AbstractQueue<Path> pathQueue,
+            char[] patternForSearch) {
+        this.bufferLength = bufferLength;
+        this.cachingBufferOffset = cachingBufferOffset;
+        this.pathQueue = pathQueue;
+        this.patternForSearch = patternForSearch;
     }
 
-    public ArrayList<Path> searchFilesMatchExtension(final String directory,
-                                                     final String extension) throws IOException {
-
-        final ArrayList<Path> filesList = new ArrayList<>();
-
-        Files.walkFileTree(Paths.get(directory), new FileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) {
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) {
-                if (file.toString().toLowerCase().endsWith(extension)) {
-                    filesList.add(file);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(final Path file, final IOException exc) {
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) {
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        return filesList;
-    }
 
     public char[] readBlock(final BufferedReader b, final int length) throws IOException {
         final char[] buf = new char[length];
@@ -60,45 +42,46 @@ public class MatchFinder {
         }
     }
 
-    public int findMatchesWithFixedBackwardStepping (final char[] massiveToParse,
-                                                                                       final char[] massiveWithPattern,
-                                                                                       final int initialPatternOffset,
-                                                                                       final long currentTextPosition,
-                                                                                       final File fileToParse) throws IOException{
-//        final ArrayList<TextMatchWithCachedSurround> listOfMatchedPositionsWithCache = new ArrayList<>();
-        long initialMatchPosition = currentTextPosition - initialPatternOffset;
+    public ArrayList<TextMatchWithCachedSurround> findMatchesInArray(final char[] massiveToParse
+
+                                                    /*,
+                                                    final File fileToParse*/) throws IOException {
+        final ArrayList<TextMatchWithCachedSurround> listOfMatchedPositionsWithCache = new ArrayList<>();
+        long initialMatchPosition = currentPositionInText - initialPositionInMatchPatternForSearch;
         int matchCounter = 0;
 
-        final FileOutputStream outputStreamForMatchObjects = new FileOutputStream(String.valueOf(fileToParse.hashCode()), true);
-        final ObjectOutputStream objectOutputStreamForMatches = new ObjectOutputStream(outputStreamForMatchObjects);
+       // final FileOutputStream outputStreamForMatchObjects = new FileOutputStream(String.valueOf(fileToParse.hashCode()), true);
+        //final ObjectOutputStream objectOutputStreamForMatches = new ObjectOutputStream(outputStreamForMatchObjects);
 
         // todo: try with resources java
 //        try (final ObjectOutputStream objectOutputStreamForMatches = new ObjectOutputStream(outputStreamForMatchObjects)) {
 //
 //        }
 
-        int patternOffset = initialPatternOffset;
+        int patternOffset = initialPositionInMatchPatternForSearch;
 
-        for (int i = massiveWithPattern.length; i < massiveToParse.length; i++) {
+        for (int i = patternForSearch.length; i < massiveToParse.length; i++) {
 
-            if (massiveToParse[i] == massiveWithPattern[patternOffset]) {
+            if (massiveToParse[i] == patternForSearch[patternOffset]) {
 
                 if (patternOffset == 0) {
-                    initialMatchPosition = currentTextPosition + i;
+                    initialMatchPosition = currentPositionInText + i;
                 }
 
                 patternOffset++;
 
-                if (patternOffset == massiveWithPattern.length) {
+                if (patternOffset == patternForSearch.length) {
 
                     final String matchWithTextSurround = cachingMatch(massiveToParse,
                             i - patternOffset,
-                            massiveWithPattern.length,
+                            patternForSearch.length,
                             this.cachingBufferOffset);
 
-                    objectOutputStreamForMatches.writeObject(new TextMatchWithCachedSurround(initialMatchPosition, matchWithTextSurround));
+                    //objectOutputStreamForMatches.writeObject(new TextMatchWithCachedSurround(initialMatchPosition, matchWithTextSurround));
 
-                    //listOfMatchedPositionsWithCache.add(new TextMatchWithCachedSurround(initialMatchPosition, matchWithTextSurround));
+                    TextMatchWithCachedSurround match = new TextMatchWithCachedSurround(initialMatchPosition, matchWithTextSurround);
+                    System.out.println(match.toString());
+                    listOfMatchedPositionsWithCache.add(match);
                     matchCounter++;
 
                     patternOffset = 0;
@@ -117,57 +100,10 @@ public class MatchFinder {
 
         this.initialPositionInMatchPatternForSearch = patternOffset;
 
-        objectOutputStreamForMatches.close();
-        return matchCounter;
-    }
-
-
-    public ArrayList<TextMatchWithCachedSurround> findMatches(final char[] massiveToParse,
-                                                              final char[] massiveWithPattern,
-                                                              final int initialPatternOffset,
-                                                              final long currentTextPosition) {
-        final ArrayList<TextMatchWithCachedSurround> listOfMatchedPositionsWithCache = new ArrayList<>();
-        long initialMatchPosition = currentTextPosition - initialPatternOffset;
-
-        int patternOffset = initialPatternOffset;
-
-        for (int i = 0; i < massiveToParse.length; i++) {
-
-            if (massiveToParse[i] == massiveWithPattern[patternOffset]) {
-
-                if (patternOffset == 0) {
-                    initialMatchPosition = currentTextPosition + i;
-                }
-
-                patternOffset++;
-
-                if (patternOffset == massiveWithPattern.length) {
-
-                    final String matchWithTextSurround = cachingMatch(massiveToParse,
-                            i - patternOffset,
-                            massiveWithPattern.length,
-                            50);
-
-                    listOfMatchedPositionsWithCache.add(new TextMatchWithCachedSurround(initialMatchPosition, matchWithTextSurround));
-
-                    patternOffset = 0;
-                }
-
-            } else {
-                if (patternOffset != 0) {
-                    i -= patternOffset;
-                    if (i < 0) {
-                        i = 0;
-                    }
-                    patternOffset = 0;
-                }
-            }
-        }
-
-        this.initialPositionInMatchPatternForSearch = patternOffset;
-
+        //objectOutputStreamForMatches.close();
         return listOfMatchedPositionsWithCache;
     }
+
 
     public String cachingMatch(final char[] massiveWithMatch, // FIXME Not a caching match at all
                                final int position,
@@ -188,7 +124,7 @@ public class MatchFinder {
         return String.valueOf(outputArray);
     }
 
-    public static char[] mergeCharMassives(char[] a, char[] b) {
+    public static char[] mergeCharArrays(char[] a, char[] b) {
         int length = a.length + b.length;
         char[] mergedMassive = new char[length];
         System.arraycopy(a, 0, mergedMassive, 0, a.length);
@@ -196,140 +132,48 @@ public class MatchFinder {
         return mergedMassive;
     }
 
-    public int parseFileWithFixedBackwardStepping(final File fileToParse, //good worked one
-                                                                                     final String pattern,
-                                                                                     final int bufferLength) throws IOException {
+    public ArrayList<TextMatchWithCachedSurround> parseFile() throws IOException {
 
-        final BufferedReader b = new BufferedReader(new FileReader(fileToParse));
-//       final ArrayList<TextMatchWithCachedSurround> arrayOfMatchPositionsAndCachedSurround = new ArrayList<>();
+        if (isBusy){
+            return new ArrayList<>();
+        }
+       // System.out.println("ok");
+        final BufferedReader b = new BufferedReader(new FileReader(pathQueue.remove().toString()));
+       final ArrayList<TextMatchWithCachedSurround> arrayOfMatchPositionsAndCachedSurround = new ArrayList<>();
 //        final FileOutputStream outputStreamForMatchObjects = new FileOutputStream(String.valueOf(fileToParse.hashCode()));
 //        final ObjectOutputStream objectOutputStreamForMatches = new ObjectOutputStream(outputStreamForMatchObjects);
 
-        char[] endOfOlderReadMassivePart = new char[pattern.length()];
+        char[] endOfOlderReadMassivePart = new char[patternForSearch.length];
         char[] blockRead = this.readBlock(b, bufferLength);
         char[] fullReadMassive;
-        long position = 0L;
-        int initialPosition = 0;
+        currentPositionInText = 0L;
+        this.initialPositionInMatchPatternForSearch = 0;
         int matchCounter = 0;
 
         while (blockRead != null) {
 
-            fullReadMassive = mergeCharMassives(endOfOlderReadMassivePart, blockRead);
+            fullReadMassive = mergeCharArrays(endOfOlderReadMassivePart, blockRead);
 
-            matchCounter += this.findMatchesWithFixedBackwardStepping(
-                    fullReadMassive,
-                    pattern.toCharArray(),
-                    initialPosition,
-                    position,
-                    fileToParse);
+//            matchCounter += this.findMatchesInArray(
+//                    fullReadMassive
+//                    //patternForSearch.toCharArray(),
+//                    //initialPosition
+//                    );
 
-            initialPosition = initialPositionInMatchPatternForSearch;
+            //initialPosition = initialPositionInMatchPatternForSearch;
 
-            //arrayOfMatchPositionsAndCachedSurround.addAll(foundMatches);
-
-            position += position;
-            blockRead = this.readBlock(b, bufferLength);
-        }
-
-        return matchCounter;
-    }
-
-    public ArrayList<TextMatchWithCachedSurround> parseFile(final File fileToParse,
-                                                            final String pattern,
-                                                            final int bufferLength) throws IOException {
-
-        final BufferedReader b = new BufferedReader(new FileReader(fileToParse));
-        final ArrayList<TextMatchWithCachedSurround> arrayOfMatchPositionsAndCachedSurround = new ArrayList<>();
-
-        //char[] prePositionedMassive = new char[bufferLength + pattern.length()];
-
-        //Arrays.fill
-        long position = 0L;
-        int initialPosition = 0;
-
-        while (true) {
-            final char[] blockRead = this.readBlock(b, bufferLength);
-
-            if (blockRead == null) {
-                break;
-            }
-
-            final ArrayList<TextMatchWithCachedSurround> foundMatches = this.findMatches(
-                    blockRead,
-                    pattern.toCharArray(),
-                    initialPosition /*+ pattern.length()*/,
-                    position);
-
-            initialPosition = initialPositionInMatchPatternForSearch;
+            //new ArrayList<TextMatchWithCachedSurround>
+            ArrayList<TextMatchWithCachedSurround> foundMatches = this.findMatchesInArray(fullReadMassive);
 
             arrayOfMatchPositionsAndCachedSurround.addAll(foundMatches);
 
-            position += position;
+            currentPositionInText += bufferLength;
+            blockRead = this.readBlock(b, bufferLength);
         }
 
         return arrayOfMatchPositionsAndCachedSurround;
     }
 
-
-    public ArrayList<TextMatchWithCachedSurround> parseFileForMatchedPatterns(final File fileToParse,
-                                                                              final char[] pattern,
-                                                                              final int bufferLength) throws IOException {
-        final BufferedReaderWrapper buffer = new BufferedReaderWrapper(fileToParse.toString(), bufferLength);
-        //final BufferedReader buffer = new BufferedReader(new FileReader(fileToParse));
-        final ArrayList<TextMatchWithCachedSurround> listOfMatches = new ArrayList<>();
-        char[] matchCache = new char[2 * this.cachingBufferOffset + pattern.length];
-        int currentPositionInPatternMassive = 0;
-        final LinkedList<Long> positionForDeferredCacheWrite = new LinkedList<>();
-
-        int readLetter = buffer.read();
-        long position = 0L;
-
-        while (readLetter != -1) {
-
-
-            matchCache[(int) (position % matchCache.length)] = (char) readLetter;
-            if (readLetter == pattern[currentPositionInPatternMassive]) {
-                currentPositionInPatternMassive++;
-
-                if (currentPositionInPatternMassive == pattern.length) {
-                    positionForDeferredCacheWrite.add(position + this.cachingBufferOffset);
-                    currentPositionInPatternMassive = 0;
-                }
-
-            } else {
-                if (currentPositionInPatternMassive != 0) {
-                    currentPositionInPatternMassive = findMatchesBackwardInMatchCache(matchCache,
-                            pattern,
-                            currentPositionInPatternMassive - 1,
-                            position);
-                }
-            }
-
-            if (!positionForDeferredCacheWrite.isEmpty()) {
-                if (positionForDeferredCacheWrite.getFirst() == position) {
-                    listOfMatches.add(new TextMatchWithCachedSurround(position - (this.cachingBufferOffset + pattern.length - 1),
-                            cacheMassiveToString(matchCache, (int) ((position + 1) % matchCache.length))));
-                    positionForDeferredCacheWrite.removeFirst();
-                }
-            }
-
-            position++;
-            readLetter = buffer.read();
-        }
-
-        while (!positionForDeferredCacheWrite.isEmpty()) {
-            listOfMatches.add(new TextMatchWithCachedSurround(positionForDeferredCacheWrite.getFirst() - (this.cachingBufferOffset + pattern.length - 1),
-                    cacheMassiveToString(matchCache, (int) (positionForDeferredCacheWrite.getFirst() % matchCache.length))));
-            positionForDeferredCacheWrite.removeFirst();
-        }
-        return listOfMatches;
-
-    }
-
-//    public void writeMatchToFile(final TextMatchWithCachedSurround match,
-//                                 final File fileToWrite, final ObjectOutputStream output) throws IOException {
-//        output.writeObject(match);
-//    }
 
     public String cacheMassiveToString(final char[] cache,
                                        final int positionOfStartingSymbol) {
@@ -368,34 +212,32 @@ public class MatchFinder {
 
     public static void main(String[] args) {
 
-        final MatchFinder fileFinder = new MatchFinder(10);
+        final AbstractQueue<Path> queue = new ConcurrentLinkedQueue<>();
+        final MatchFinder matchFinder = new MatchFinder(
+                5000000,
+                10,
+                queue,
+                "JOJ".toCharArray());
+        final FileBuffer fileBuffer = new FileBuffer(queue, matchFinder);
+        final FileFinder fileFinder = new FileFinder("D:\\FhtagnEast\\Downloads\\indiv18\\itcont.txt",
+                ".txt", fileBuffer);
 
         long start, finish;
 
+        start = System.currentTimeMillis();
+        new Thread(fileFinder).start();
+        finish = System.currentTimeMillis();
+        System.out.println("Time: " + (finish - start));
 
-        String patternForSearch = "MARY";
-        try {
+       // String patternForSearch = "JOJ";
+      //  try {
 //            final ArrayList<Path> pathsList =
 //                    fileFinder.searchFilesMatchExtension(
 //                            "D:\\FhtagnEast\\Downloads\\indiv18\\test.txt",
 //                            ".txt");
 //
-            final ArrayList<Path> pathsList =
-                    fileFinder.searchFilesMatchExtension(
-                            "D:\\FhtagnEast\\Downloads\\indiv18\\itcont.txt",
-                            ".txt");
+            // final ArrayList<Path> pathsList = fileFinder.searchFiles();
 
-
-            final ArrayList<Path> pathsList1 =
-                    fileFinder.searchFilesMatchExtension(
-                            "D:\\FhtagnEast\\Downloads\\indiv18\\itcont1.txt",
-                            ".txt");
-
-
-            final ArrayList<Path> pathsList2 =
-                    fileFinder.searchFilesMatchExtension(
-                            "D:\\FhtagnEast\\Downloads\\indiv18\\itcont2.txt",
-                            ".txt");
 
 ////            final ArrayList<Path> pathsList =
 ////                    fileFinder.searchFilesMatchExtension(
@@ -403,28 +245,28 @@ public class MatchFinder {
 ////                            ".txt");
 
 
-            start = System.currentTimeMillis();
+          //  start = System.currentTimeMillis();
 
-            for (Path path : pathsList2) {
+            //new Thread()
 
-                final File fileToParse = new File(path.toString());
-
-
-                int numberOfMatches=
-                        fileFinder.parseFileWithFixedBackwardStepping(fileToParse,
-                                patternForSearch, 5000000); //MARY goes bad
-
-
-
-                System.out.println(path.toString() + ", " + numberOfMatches);
-//            for (TextMatchWithCachedSurround match : output){
-//                System.out.println(match.getPositionInWholeText());
-//                System.out.println(match.getStringOfMatchWithSurround());
+//            for (Path path : pathsList) {
+//
+//                final File fileToParse = new File(path.toString());
+//
+//
+//                int numberOfMatches =
+//                        matchFinder.parseFile(); //MARY goes bad
+//
+//
+//                System.out.println(path.toString() + ", " + numberOfMatches);
+////            for (TextMatchWithCachedSurround match : output){
+////                System.out.println(match.getPositionInWholeText());
+////                System.out.println(match.getStringOfMatchWithSurround());
+////            }
 //            }
-            }
 
-            finish = System.currentTimeMillis();
-            System.out.println("Time: " + (finish - start));
+//            finish = System.currentTimeMillis();
+//            System.out.println("Time: " + (finish - start));
 //
 //            start = System.currentTimeMillis();
 //
@@ -470,11 +312,11 @@ public class MatchFinder {
 //
 //            System.out.println("Time: " + (finish - start));
 
-        } catch (final IOException e) {
-            System.out.println("IO error");
-            e.printStackTrace();
-        }
-
+//        } catch (final IOException e) {
+//            System.out.println("IO error");
+//            e.printStackTrace();
+//        }
+return;
     }
 
 }
