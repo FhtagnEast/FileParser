@@ -11,13 +11,14 @@ import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 
-public class MatchFinder {
+public class MatchFinder implements Runnable {
 
     final private int cachingBufferOffset;
     final private AbstractQueue<Path> pathQueue;
     final private char[] patternForSearch;
     final private int bufferLength;
     final private HashMap<Path, ArrayList<TextMatchWithCachedSurround>> hashMapFromFilesAndMatchArrays = new HashMap<>();
+    // final private FileBuffer fileBuffer;
 
     private boolean isBusy = false;
     private long currentPositionInText;
@@ -130,13 +131,15 @@ public class MatchFinder {
         return mergedMassive;
     }
 
-    public ArrayList<TextMatchWithCachedSurround> parseFile() throws IOException {
+    public void parseFile() throws IOException {
 
         if (isBusy) {
-            return new ArrayList<>();
+            return;
         }
         // System.out.println("ok");
-        final BufferedReader b = new BufferedReader(new FileReader(pathQueue.remove().toString()));
+        final Path pathToFileForParse = pathQueue.remove();
+        final FileReader fileReaderForFileForParse = new FileReader(pathToFileForParse.toString());
+        final BufferedReader b = new BufferedReader(fileReaderForFileForParse);
         final ArrayList<TextMatchWithCachedSurround> arrayOfMatchPositionsAndCachedSurround = new ArrayList<>();
 //        final FileOutputStream outputStreamForMatchObjects = new FileOutputStream(String.valueOf(fileToParse.hashCode()));
 //        final ObjectOutputStream objectOutputStreamForMatches = new ObjectOutputStream(outputStreamForMatchObjects);
@@ -173,23 +176,33 @@ public class MatchFinder {
 //                    endOfOlderReadMassivePart.length);
             blockRead = this.readBlock(b, bufferLength);
         }
-        //hashMapFromFilesAndMatchArrays.put()
 
-        return arrayOfMatchPositionsAndCachedSurround;
+
+        hashMapFromFilesAndMatchArrays.put(pathToFileForParse, arrayOfMatchPositionsAndCachedSurround);
+
+        ArrayList<TextMatchWithCachedSurround> test = hashMapFromFilesAndMatchArrays.get(pathToFileForParse);
+        for(TextMatchWithCachedSurround point : test) {
+            System.out.println(point.toString());
+        }
+
+        if (!pathQueue.isEmpty()) {
+            parseFile();
+        } else {
+            return;
+        }
     }
 
 
+    // @Override
+    public void run() {
 
 
-    public static void main(String[] args) {
-
-        final AbstractQueue<Path> queue = new ConcurrentLinkedQueue<>();
-        final MatchFinder matchFinder = new MatchFinder(
-                4,
-                10,
-                queue,
-                "JOJO".toCharArray());
-        final FileBuffer fileBuffer = new FileBuffer(queue, matchFinder);
+//        final MatchFinder matchFinder = new MatchFinder(
+//                4,
+//                10,
+//                queue,
+//                "JOJO".toCharArray());
+        final FileBuffer fileBuffer = new FileBuffer(this.pathQueue, this);
         final FileFinder fileFinder = new FileFinder("D:\\FhtagnEast\\Downloads\\indiv18\\itcont.txt",
                 ".txt", fileBuffer);
 
@@ -287,7 +300,21 @@ public class MatchFinder {
 //            System.out.println("IO error");
 //            e.printStackTrace();
 //        }
-        return;
+
+        if (pathQueue.isEmpty() & fileBuffer.getFilesRanOut()) {
+            return;
+        }
+
     }
 
+    public static void main(String[] args){
+        final AbstractQueue<Path> queue = new ConcurrentLinkedQueue<>();
+        final MatchFinder matchFinder = new MatchFinder(500000,
+                10,
+                queue,
+                "JOJO".toCharArray());
+        new Thread(matchFinder).start();
+
+
+    }
 }

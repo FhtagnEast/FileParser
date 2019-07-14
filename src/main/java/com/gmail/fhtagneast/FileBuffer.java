@@ -28,8 +28,8 @@ public class FileBuffer {
       //  System.out.println(path.toString());
         filesQueue.add(path);
         try{
-            ArrayList<TextMatchWithCachedSurround> matches = matchFinder.parseFile();
-            System.out.println(matches.size());
+            matchFinder.parseFile();
+            //System.out.println(matches.size());
         //for(TextMatchWithCachedSurround match : matches){
             //System.out.println(match.toString());
         }
