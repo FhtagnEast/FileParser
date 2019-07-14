@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 
-//import static sun.jvm.hotspot.runtime.BasicObjectLock.size;
-
 public class FileFinder implements Runnable {
 
     final private String extension;
@@ -24,6 +22,7 @@ public class FileFinder implements Runnable {
         //final FileBuffer fileB = new ArrayList<>();
 
 //        try(Files.walkFileTree(Paths.get(directory), new FileVisitor<>() {
+        buffer.setFilesRanOut(false);
         try{Files.walkFileTree(Paths.get(directory), new FileVisitor<>() {
                     @Override
                     public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) {
@@ -48,9 +47,11 @@ public class FileFinder implements Runnable {
                         return FileVisitResult.CONTINUE;
                     }
                 }
+
         );
-            return;
+            buffer.setFilesRanOut(true);
         } catch (IOException exc){
+            buffer.setFilesRanOut(true);
             exc.printStackTrace();
         }
         //return;

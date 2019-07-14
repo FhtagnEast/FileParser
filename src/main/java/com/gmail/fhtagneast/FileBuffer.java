@@ -6,8 +6,9 @@ import java.util.AbstractQueue;
 import java.util.ArrayList;
 
 public class FileBuffer {
-    final AbstractQueue<Path> filesQueue;
-    final MatchFinder matchFinder;
+    private final AbstractQueue<Path> filesQueue;
+    private final MatchFinder matchFinder;
+    private boolean filesRanOut = false;
 
     public FileBuffer (AbstractQueue<Path> filesQueue,
                        MatchFinder matchFinder){
@@ -15,16 +16,23 @@ public class FileBuffer {
         this.matchFinder = matchFinder;
     }
 
+    public void setFilesRanOut(boolean filesRanOut){
+        this.filesRanOut = filesRanOut;
+    }
+
+    public boolean getFilesRanOut(){
+        return this.filesRanOut;
+    }
+
     public void addFile(Path path){
       //  System.out.println(path.toString());
         filesQueue.add(path);
         try{
             ArrayList<TextMatchWithCachedSurround> matches = matchFinder.parseFile();
+            System.out.println(matches.size());
         //for(TextMatchWithCachedSurround match : matches){
             //System.out.println(match.toString());
         }
-
-
         catch (IOException exc){
             exc.printStackTrace();
         }
